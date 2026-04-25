@@ -3,24 +3,16 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import time
 import json
 import os
-from flask import Flask, request
 
-# ========== ЗАГРУЗКА ТОКЕНОВ ИЗ .ENV ==========
-from dotenv import load_dotenv
-load_dotenv()
-
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-CRYPTOBOT_TOKEN = os.getenv('CRYPTOBOT_TOKEN')
-ADMIN_ID = int(os.getenv('ADMIN_ID'))
+# ========== ТВОИ НОВЫЕ ДАННЫЕ ==========
+BOT_TOKEN = '8347780383:AAEiZqMEX7UYkD9BeUxZ8HURBOohZU3hYdI'
+ADMIN_ID = 8591124711
+DATA_FILE = 'bot_data.json'
 HELP_CONTACT = '@poderkaverif'
 
-# ========== ПРОВЕРКА ==========
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN не найден!")
-if not CRYPTOBOT_TOKEN:
-    raise ValueError("CRYPTOBOT_TOKEN не найден!")
-
 # ========== CRYPTOBOT ==========
+CRYPTOBOT_TOKEN = '565357:AAJPkqSRrhNbBGbhx33ivrm7AgnNmnM0SFg'
+
 crypto_available = False
 crypto_client = None
 
@@ -35,31 +27,21 @@ except Exception as e:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ========== FLASK ДЛЯ RENDER ==========
-app = Flask(__name__)
+# ========== УДАЛЯЕМ ВЕСЬ WEBHOOK И FLASK ==========
+try:
+    bot.delete_webhook()
+    print("✅ Webhook удалён")
+except:
+    pass
 
-@app.route('/', methods=['GET'])
-def index():
-    return "✅ Бот работает!", 200
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return 'OK', 200
-    return 'Bad Request', 400
-
-# ========== УСТАНОВКА WEBHOOK ==========
-WEBHOOK_URL = 'https://pro-verify-bybit-bot.onrender.com/webhook'
-bot.remove_webhook()
-time.sleep(1)
-bot.set_webhook(url=WEBHOOK_URL)
-print(f"✅ Webhook установлен: {WEBHOOK_URL}")
+# ========== ОЧИСТКА КОМАНД ==========
+try:
+    bot.delete_my_commands()
+    print("✅ Команды очищены")
+except:
+    pass
 
 # ========== ДАННЫЕ ==========
-DATA_FILE = 'bot_data.json'
 total_revenue_usdt = 0
 total_orders = 0
 BANNED_USERS = set()
@@ -80,8 +62,11 @@ def load_data():
                 user_carts = data.get('user_carts', {})
                 user_name = data.get('user_name', {})
                 user_bank = data.get('user_bank', {})
+                print("✅ Данные загружены")
         except:
             pass
+    else:
+        print("📁 Новый файл данных")
 
 def save_data():
     if ADMIN_ID in BANNED_USERS:
@@ -127,6 +112,14 @@ def get_cart_text(user_id):
         items += f"• {item['name']} - {item['price']} USDT\n   👉 /del_{i}\n\n"
         total += item["price"]
     return items, total
+
+def get_banned_list_text():
+    if not BANNED_USERS:
+        return "📭 Список забаненных пуст"
+    text = "🚫 ЗАБАНЕННЫЕ ПОЛЬЗОВАТЕЛИ:\n\n"
+    for i, user_id in enumerate(BANNED_USERS, 1):
+        text += f"{i}. ID: {user_id}\n"
+    return text
 
 # ========== ТОВАРЫ ==========
 BYBIT_COUNTRIES = {
@@ -454,6 +447,12 @@ if __name__ == "__main__":
     print("=" * 50)
     print("🔥 БОТ PRO VERIFY BYBIT ЗАПУЩЕН!")
     print("=" * 50)
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    print("✅ ТОЛЬКО POLLING (без Flask, без webhook)")
+    print("=" * 50)
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=1, timeout=60)
+        except Exception as e:
+            print(f"❌ Ошибка: {e}")
+            time.sleep(15)
     
