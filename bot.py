@@ -102,6 +102,12 @@ def add_revenue(usdt):
     total_orders += 1
     save_data()
 
+def clear_stats():
+    global total_revenue_usdt, total_orders
+    total_revenue_usdt = 0
+    total_orders = 0
+    save_data()
+
 def get_cart_text(user_id):
     cart = user_carts.get(str(user_id), [])
     if not cart:
@@ -166,7 +172,8 @@ def start_keyboard(user_id):
     if user_id == ADMIN_ID:
         kb.add(
             InlineKeyboardButton("💰 Статистика", callback_data="stats"),
-            InlineKeyboardButton("🚫 Забаненные", callback_data="banned_list")
+            InlineKeyboardButton("🚫 Забаненные", callback_data="banned_list"),
+            InlineKeyboardButton("🗑 Очистить статистику", callback_data="clear_stats")
         )
     return kb
 
@@ -247,15 +254,13 @@ def bank_keyboard():
     )
     return kb
 
-def support_keyboard(user_id):
-    """Клавиатура для сообщения поддержки"""
+def support_keyboard():
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton("✏️ Написать вопрос", callback_data="ask_support"))
     kb.add(InlineKeyboardButton("◀ Назад", callback_data="back_to_start"))
     return kb
 
 def admin_reply_keyboard(user_id):
-    """Клавиатура для ответа админа"""
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton("💬 Ответить", callback_data=f"reply_to_{user_id}"))
     return kb
@@ -283,7 +288,6 @@ def get_user_name(m):
     bot.send_message(uid, f"✅ Отлично, {user_name[uid]}!\n\n🏦 Теперь выберите ваш банк:", reply_markup=bank_keyboard())
 
 def forward_to_admin(user_id, text):
-    """Отправляет сообщение админу с кнопкой ответа"""
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("💬 Ответить", callback_data=f"reply_to_{user_id}"))
     bot.send_message(ADMIN_ID, f"📩 СООБЩЕНИЕ ОТ {user_name.get(user_id, user_id)} (ID: {user_id}):\n\n{text}", reply_markup=kb)
@@ -297,9 +301,16 @@ def handle(call):
         bot.answer_callback_query(call.id, "❌ Доступ заблокирован")
         return
 
+    # ========== ОЧИСТКА СТАТИСТИКИ (ТОЛЬКО ДЛЯ АДМИНА) ==========
+    if data == "clear_stats" and uid == ADMIN_ID:
+        clear_stats()
+        bot.answer_callback_query(call.id, "🗑 Статистика очищена!")
+        bot.send_message(ADMIN_ID, "🗑 Статистика успешно очищена!")
+        return
+
     # ========== ПОДДЕРЖКА ==========
     if data == "support":
-        bot.edit_message_text("🆘 ПОДДЕРЖКА\n\nНапишите ваш вопрос одним сообщением. Администратор ответит вам.", call.message.chat.id, call.message.message_id, reply_markup=support_keyboard(uid))
+        bot.edit_message_text("🆘 ПОДДЕРЖКА\n\n📝 Напишите ваш вопрос одним сообщением. Администратор ответит вам.", call.message.chat.id, call.message.message_id, reply_markup=support_keyboard())
         return
 
     if data == "ask_support":
@@ -400,7 +411,6 @@ def handle(call):
         item = BYBIT_COUNTRIES[code]
         if str(uid) not in user_carts:
             user_carts[str(uid)] = []
-        # Защита от дублирования
         for existing in user_carts[str(uid)]:
             if existing["name"] == item["name"]:
                 bot.answer_callback_query(call.id, "❌ Этот товар уже в корзине!")
@@ -541,14 +551,15 @@ def delete_item(m):
 
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
-    print("=" * 50)
+    print("=" * 70)
     print("🔥 БОТ PRO VERIFY BYBIT ЗАПУЩЕН!")
-    print("=" * 50)
+    print("=" * 70)
     print("✅ ПРИНЯТЬ → деньги + бан (клиент НЕ получает уведомление)")
     print("✅ ОТКЛОНИТЬ → уведомление клиенту, деньги не добавляются")
+    print("✅ ОЧИСТИТЬ СТАТИСТИКУ — только для админа")
     print("✅ ПОДДЕРЖКА → сообщения приходят админу")
     print("✅ ЗАЩИТА ОТ ДУБЛИРОВАНИЯ ТОВАРОВ")
-    print("=" * 50)
+    print("=" * 70)
     while True:
         try:
             bot.polling(none_stop=True, interval=1, timeout=60)
