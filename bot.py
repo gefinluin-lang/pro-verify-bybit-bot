@@ -247,15 +247,28 @@ def bank_keyboard():
     )
     return kb
 
+def support_keyboard(user_id):
+    """Клавиатура для сообщения поддержки"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("✏️ Написать вопрос", callback_data="ask_support"))
+    kb.add(InlineKeyboardButton("◀ Назад", callback_data="back_to_start"))
+    return kb
+
+def admin_reply_keyboard(user_id):
+    """Клавиатура для ответа админа"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("💬 Ответить", callback_data=f"reply_to_{user_id}"))
+    return kb
+
 # ========== ОБРАБОТЧИКИ ==========
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = m.chat.id
-    if uid == ADMIN_ID:
-        bot.send_message(uid, "🌟 ДОБРО ПОЖАЛОВАТЬ, АДМИНИСТРАТОР!\n\n👇 Выбери действие:", reply_markup=start_keyboard(uid))
-        return
     if is_banned(uid):
         bot.send_message(uid, "🚫 ДОСТУП ЗАБЛОКИРОВАН")
+        return
+    if uid == ADMIN_ID:
+        bot.send_message(uid, "🌟 ДОБРО ПОЖАЛОВАТЬ, АДМИНИСТРАТОР!\n\n👇 Выбери действие:", reply_markup=start_keyboard(uid))
         return
     if uid not in user_name:
         bot.send_message(uid, "🌟 ДОБРО ПОЖАЛОВАТЬ В МАГАЗИН!\n\n📝 Напишите ваше имя:")
@@ -269,16 +282,44 @@ def get_user_name(m):
     save_data()
     bot.send_message(uid, f"✅ Отлично, {user_name[uid]}!\n\n🏦 Теперь выберите ваш банк:", reply_markup=bank_keyboard())
 
+def forward_to_admin(user_id, text):
+    """Отправляет сообщение админу с кнопкой ответа"""
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("💬 Ответить", callback_data=f"reply_to_{user_id}"))
+    bot.send_message(ADMIN_ID, f"📩 СООБЩЕНИЕ ОТ {user_name.get(user_id, user_id)} (ID: {user_id}):\n\n{text}", reply_markup=kb)
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle(call):
     uid = call.from_user.id
     data = call.data
 
-    if uid != ADMIN_ID and is_banned(uid):
+    if is_banned(uid) and uid != ADMIN_ID:
         bot.answer_callback_query(call.id, "❌ Доступ заблокирован")
         return
 
-    # РЕГИСТРАЦИЯ
+    # ========== ПОДДЕРЖКА ==========
+    if data == "support":
+        bot.edit_message_text("🆘 ПОДДЕРЖКА\n\nНапишите ваш вопрос одним сообщением. Администратор ответит вам.", call.message.chat.id, call.message.message_id, reply_markup=support_keyboard(uid))
+        return
+
+    if data == "ask_support":
+        bot.answer_callback_query(call.id, "✏️ Напишите ваш вопрос в этот чат")
+        bot.register_next_step_handler(call.message, lambda m: forward_to_admin(uid, m.text))
+        bot.send_message(uid, "✅ Отправьте ваш вопрос одним сообщением.")
+        return
+
+    # ========== ОТВЕТ АДМИНА ПОЛЬЗОВАТЕЛЮ ==========
+    if data.startswith("reply_to_"):
+        if uid != ADMIN_ID:
+            bot.answer_callback_query(call.id, "❌ Нет доступа")
+            return
+        user_id = int(data.split("_")[2])
+        bot.send_message(ADMIN_ID, f"✏️ Введите ответ для {user_name.get(user_id, user_id)} (ID: {user_id}):")
+        bot.register_next_step_handler(call.message, lambda m: send_answer_to_user(m, user_id))
+        bot.answer_callback_query(call.id)
+        return
+
+    # ========== РЕГИСТРАЦИЯ ==========
     if uid != ADMIN_ID and data.startswith("bank_"):
         if data == "bank_sber":
             user_bank[uid] = "Сбербанк"
@@ -291,27 +332,26 @@ def handle(call):
         bot.answer_callback_query(call.id, f"✅ Выбран {user_bank[uid]}")
         return
 
-    # НАВИГАЦИЯ
+    # ========== НАВИГАЦИЯ ==========
     if data == "back_to_start":
-        bot.edit_message_text("🌟 ГЛАВНОЕ МЕНЮ\n\n👇 Выбери действие:", call.message.chat.id, call.message.message_id, reply_markup=start_keyboard(uid))
+        if uid == ADMIN_ID:
+            bot.edit_message_text("🌟 ГЛАВНОЕ МЕНЮ АДМИНА", call.message.chat.id, call.message.message_id, reply_markup=start_keyboard(uid))
+        else:
+            bot.edit_message_text("🌟 ГЛАВНОЕ МЕНЮ", call.message.chat.id, call.message.message_id, reply_markup=start_keyboard(uid))
         return
 
-    # АДМИН
+    # ========== АДМИН ==========
     if data == "stats" and uid == ADMIN_ID:
         bot.send_message(ADMIN_ID, f"💰 СТАТИСТИКА\n\n💵 Выручка: {total_revenue_usdt} USDT\n📦 Заказов: {total_orders}\n👥 Забанено: {len(BANNED_USERS)}\n👤 Пользователей: {len(user_name)}")
         bot.answer_callback_query(call.id)
         return
+
     if data == "banned_list" and uid == ADMIN_ID:
         bot.send_message(ADMIN_ID, get_banned_list_text(), reply_markup=back_keyboard())
         bot.answer_callback_query(call.id)
         return
 
-    # ПОДДЕРЖКА
-    if data == "support":
-        bot.edit_message_text("🆘 ПОДДЕРЖКА\n\n📝 Напишите ваш вопрос, администратор ответит вам.", call.message.chat.id, call.message.message_id, reply_markup=back_keyboard())
-        return
-
-    # ПРОДУКТЫ
+    # ========== ПРОДУКТЫ ==========
     if data == "verification":
         bot.edit_message_text("✅ ВЕРИФИКАЦИЯ\n\n🔐 Выберите платформу:", call.message.chat.id, call.message.message_id, reply_markup=verification_platform_keyboard())
     elif data == "buy_card":
@@ -354,12 +394,17 @@ def handle(call):
     elif data == "platform_pocket":
         bot.edit_message_text("🎯 POCKET OPTION\n\nВыбери страну:", call.message.chat.id, call.message.message_id, reply_markup=pocket_keyboard())
 
-    # ДОБАВЛЕНИЕ В КОРЗИНУ
+    # ========== ДОБАВЛЕНИЕ В КОРЗИНУ ==========
     elif data.startswith("add_bybit_"):
         code = data.split("_")[2]
         item = BYBIT_COUNTRIES[code]
         if str(uid) not in user_carts:
             user_carts[str(uid)] = []
+        # Защита от дублирования
+        for existing in user_carts[str(uid)]:
+            if existing["name"] == item["name"]:
+                bot.answer_callback_query(call.id, "❌ Этот товар уже в корзине!")
+                return
         user_carts[str(uid)].append({"name": item["name"], "price": item["price"]})
         save_data()
         bot.answer_callback_query(call.id, f"✅ {item['name']} добавлен!")
@@ -370,6 +415,10 @@ def handle(call):
         item = POCKET_COUNTRIES[code]
         if str(uid) not in user_carts:
             user_carts[str(uid)] = []
+        for existing in user_carts[str(uid)]:
+            if existing["name"] == item["name"]:
+                bot.answer_callback_query(call.id, "❌ Этот товар уже в корзине!")
+                return
         user_carts[str(uid)].append({"name": item["name"], "price": item["price"]})
         save_data()
         bot.answer_callback_query(call.id, f"✅ {item['name']} добавлен!")
@@ -380,6 +429,10 @@ def handle(call):
         item = CARDS[code]
         if str(uid) not in user_carts:
             user_carts[str(uid)] = []
+        for existing in user_carts[str(uid)]:
+            if existing["name"] == item["name"]:
+                bot.answer_callback_query(call.id, "❌ Этот товар уже в корзине!")
+                return
         user_carts[str(uid)].append({"name": item["name"], "price": item["price"]})
         save_data()
         bot.answer_callback_query(call.id, f"✅ {item['name']} добавлен!")
@@ -390,32 +443,71 @@ def handle(call):
         item = COMBOS[code]
         if str(uid) not in user_carts:
             user_carts[str(uid)] = []
+        for existing in user_carts[str(uid)]:
+            if existing["name"] == item["name"]:
+                bot.answer_callback_query(call.id, "❌ Этот товар уже в корзине!")
+                return
         user_carts[str(uid)].append({"name": item["name"], "price": item["price"]})
         save_data()
         bot.answer_callback_query(call.id, f"✅ {item['name']} добавлен!")
         items, total = get_cart_text(uid)
         bot.edit_message_text(f"🛒 КОРЗИНА\n\n{items}\n💰 Сумма: {total} USDT", call.message.chat.id, call.message.message_id, reply_markup=cart_keyboard())
 
-    # ПРИНЯТЬ/ОТКЛОНИТЬ
+    # ========== ПРИНЯТЬ / ОТКЛОНИТЬ ==========
     elif data.startswith("accept_"):
         parts = data.split("_")
         user_id = int(parts[1])
         amount = float(parts[2])
+        # Добавляем деньги в статистику
         add_revenue(amount)
-        bot.send_message(user_id, f"✅ ПЛАТЁЖ НА {amount} USDT ПРИНЯТ!\n\nСпасибо за покупку!")
-        bot.answer_callback_query(call.id, f"✅ +{amount} USDT")
+        # Баним пользователя
+        ban_user(user_id)
+        # Убираем кнопки у сообщения админа
+        try:
+            bot.edit_message_caption(
+                caption=call.message.caption + f"\n\n✅ ПРИНЯТ. ДОБАВЛЕНО {amount} USDT | ПОЛЬЗОВАТЕЛЬ ЗАБАНЕН",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id
+            )
+        except:
+            pass
+        bot.answer_callback_query(call.id, f"✅ +{amount} USDT, пользователь забанен")
+        # НЕ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ ПОЛЬЗОВАТЕЛЮ
+
     elif data.startswith("reject_"):
         parts = data.split("_")
         user_id = int(parts[1])
-        bot.send_message(user_id, f"❌ ПЛАТЁЖ ОТКЛОНЁН!\n\nОтправьте чёткий скриншот оплаты.")
-        bot.answer_callback_query(call.id, f"❌ Платёж отклонён")
+        # Отправляем пользователю уведомление об отклонении
+        bot.send_message(user_id, "❌ ВАШ ПЛАТЁЖ ОТКЛОНЁН!\n\nОтправьте чёткий скриншот оплаты.")
+        # Убираем кнопки у сообщения админа
+        try:
+            bot.edit_message_caption(
+                caption=call.message.caption + "\n\n❌ ОТКЛОНЁН | ПОЛЬЗОВАТЕЛЬ НЕ ЗАБАНЕН",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id
+            )
+        except:
+            pass
+        bot.answer_callback_query(call.id, "❌ Платёж отклонён")
+
+# ========== ОТВЕТ АДМИНА ПОЛЬЗОВАТЕЛЮ ==========
+def send_answer_to_user(m, user_id):
+    if m.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.send_message(user_id, f"📩 ОТВЕТ ОПЕРАТОРА:\n\n{m.text}")
+        bot.send_message(ADMIN_ID, f"✅ Ответ отправлен {user_name.get(user_id, user_id)}")
+    except Exception as e:
+        bot.send_message(ADMIN_ID, f"❌ Ошибка при отправке ответа: {e}")
 
 # ========== СКРИНШОТЫ ==========
 @bot.message_handler(content_types=['photo'])
 def handle_photo(m):
     uid = m.chat.id
-    if uid != ADMIN_ID and is_banned(uid):
-        bot.send_message(uid, "🚫 ДОСТУП ЗАБЛОКИРОВАН")
+    if is_banned(uid):
+        return
+    if uid == ADMIN_ID:
+        bot.send_message(ADMIN_ID, "ℹ️ Вы отправили скриншот, но вы администратор. Действие не требуется.")
         return
     if uid not in pending_orders:
         bot.send_message(uid, "❌ Сначала оформите заказ!")
@@ -423,7 +515,9 @@ def handle_photo(m):
     order = pending_orders.pop(uid)
     amount = order["amount"]
     items = order["items"]
-    caption = f"📸 СКРИНШОТ ОТ {user_name.get(uid, uid)} (ID: {uid})\n💰 {amount} USDT\n\n📦 {items}"
+    name = user_name.get(uid, f"User_{uid}")
+    bank = user_bank.get(uid, "Не указан")
+    caption = f"📸 СКРИНШОТ ОПЛАТЫ\n\n👤 {name}\n🆔 ID: {uid}\n🏦 Банк: {bank}\n💰 {amount} USDT\n\n📦 Заказ:\n{items}"
     bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=caption, reply_markup=admin_accept_keyboard(uid, amount))
     bot.send_message(uid, "✅ Скриншот отправлен! Администратор проверит оплату.")
 
@@ -438,7 +532,10 @@ def delete_item(m):
             save_data()
             bot.send_message(uid, f"🗑 Удалён: {removed['name']}")
             items, total = get_cart_text(uid)
-            bot.send_message(uid, f"🛒 КОРЗИНА\n\n{items}\n💰 Сумма: {total} USDT", reply_markup=cart_keyboard())
+            if items == "📭 Корзина пуста":
+                bot.send_message(uid, f"🛒 КОРЗИНА\n\n{items}", reply_markup=cart_keyboard())
+            else:
+                bot.send_message(uid, f"🛒 КОРЗИНА\n\n{items}\n💰 Сумма: {total} USDT", reply_markup=cart_keyboard())
     except:
         pass
 
@@ -447,7 +544,10 @@ if __name__ == "__main__":
     print("=" * 50)
     print("🔥 БОТ PRO VERIFY BYBIT ЗАПУЩЕН!")
     print("=" * 50)
-    print("✅ ТОЛЬКО POLLING (без Flask, без webhook)")
+    print("✅ ПРИНЯТЬ → деньги + бан (клиент НЕ получает уведомление)")
+    print("✅ ОТКЛОНИТЬ → уведомление клиенту, деньги не добавляются")
+    print("✅ ПОДДЕРЖКА → сообщения приходят админу")
+    print("✅ ЗАЩИТА ОТ ДУБЛИРОВАНИЯ ТОВАРОВ")
     print("=" * 50)
     while True:
         try:
@@ -455,4 +555,3 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"❌ Ошибка: {e}")
             time.sleep(15)
-    
