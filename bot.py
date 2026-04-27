@@ -551,6 +551,19 @@ if __name__ == "__main__":
     while True:
         try:
             bot.polling(none_stop=True, interval=1, timeout=60)
+        from flask import Flask
+import threading
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+@flask_app.route('/health')
+def health():
+    return "OK", 200
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=10000)
+
+threading.Thread(target=run_flask, daemon=True).start()
         except Exception as e:
             print(f"❌ Ошибка: {e}")
             time.sleep(15)
