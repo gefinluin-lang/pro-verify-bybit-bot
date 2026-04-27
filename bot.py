@@ -367,7 +367,7 @@ def handle(call):
     elif data == "combos":
         bot.edit_message_text("🎁 КОМБО-ПАКЕТЫ\n\n🔥 Выберите пакет:", call.message.chat.id, call.message.message_id, reply_markup=combos_keyboard())
     elif data == "reviews":
-        bot.edit_message_text("⭐ Отзывы: https://t.me/+NwnK-JR0iEU0NzQ5-", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("⭐ Отзывы: https://t.me/+NwnK-JR0iEU0NzQ5", call.message.chat.id, call.message.message_id)
     elif data == "cart":
         items, total = get_cart_text(uid)
         bot.edit_message_text(f"🛒 КОРЗИНА\n\n{items}\n💰 Сумма: {total} USDT", call.message.chat.id, call.message.message_id, reply_markup=cart_keyboard())
