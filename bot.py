@@ -3,8 +3,10 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import time
 import json
 import os
+from flask import Flask
+from threading import Thread
 
-# ========== ТВОИ НОВЫЕ ДАННЫЕ ==========
+# ========== ТВОИ ДАННЫЕ ==========
 BOT_TOKEN = '8347780383:AAEiZqMEX7UYkD9BeUxZ8HURBOohZU3hYdI'
 ADMIN_ID = 8591124711
 DATA_FILE = 'bot_data.json'
@@ -23,21 +25,14 @@ try:
     crypto_available = True
     print("✅ CryptoBot подключён")
 except Exception as e:
-    print(f"❌ CryptoBot НЕ подключ theater: {e}")
+    print(f"❌ CryptoBot НЕ подключён: {e}")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ========== УДАЛЯЕМ ВЕСЬ WEBHOOK И FLASK ==========
+# ========== УДАЛЯЕМ WEBHOOK ==========
 try:
     bot.delete_webhook()
     print("✅ Webhook удалён")
-except:
-    pass
-
-# ========== ОЧИСТКА КОМАНД ==========
-try:
-    bot.delete_my_commands()
-    print("✅ Команды очищены")
 except:
     pass
 
@@ -262,7 +257,21 @@ def support_keyboard():
     )
     return kb
 
-# ========== ОБРАБОТЧИКИ ==========
+# ========== ФЛЕШ‑СЕРВЕР ДЛЯ RENDER (НЕ МЕШАЕТ ПОЛЛИНГУ) ==========
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+@flask_app.route('/health')
+def health():
+    return "OK", 200
+
+def run_webserver():
+    flask_app.run(host='0.0.0.0', port=10000)
+
+Thread(target=run_webserver, daemon=True).start()
+print("✅ Health‑сервер запущен на порту 10000")
+
+# ========== ОСНОВНАЯ ЛОГИКА БОТА ==========
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = m.chat.id
@@ -289,6 +298,15 @@ def forward_to_admin(user_id, text):
     kb.add(InlineKeyboardButton("💬 Ответить", callback_data=f"reply_to_{user_id}"))
     bot.send_message(ADMIN_ID, f"📩 СООБЩЕНИЕ ОТ {user_name.get(user_id, user_id)} (ID: {user_id}):\n\n{text}", reply_markup=kb)
 
+def send_answer_to_user(m, user_id):
+    if m.chat.id != ADMIN_ID:
+        return
+    try:
+        bot.send_message(user_id, f"📩 ОТВЕТ ОПЕРАТОРА:\n\n{m.text}")
+        bot.send_message(ADMIN_ID, f"✅ Ответ отправлен {user_name.get(user_id, user_id)}")
+    except Exception as e:
+        bot.send_message(ADMIN_ID, f"❌ Ошибка при отправке ответа: {e}")
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle(call):
     uid = call.from_user.id
@@ -298,36 +316,36 @@ def handle(call):
         bot.answer_callback_query(call.id, "❌ Доступ заблокирован")
         return
 
-    # ========== ОЧИСТКА СТАТИСТИКИ (ТОЛЬКО ДЛЯ АДМИНА) ==========
+    # Очистка статистики
     if data == "clear_stats" and uid == ADMIN_ID:
         clear_stats()
         bot.answer_callback_query(call.id, "🗑 Статистика очищена!")
         bot.send_message(ADMIN_ID, "🗑 Статистика успешно очищена!")
         return
 
-    # ========== ПОДДЕРЖКА ==========
+    # Поддержка
     if data == "support":
-        bot.edit_message_text("🆘 ПОДДЕРЖКА\n\n📝 Напишите ваш вопрос одним сообщением. Администратор ответит вам.", call.message.chat.id, call.message.message_id, reply_markup=support_keyboard())
+        bot.edit_message_text("🆘 ПОДДЕРЖКА\n\n📝 Напишите ваш вопрос. Администратор ответит.", call.message.chat.id, call.message.message_id, reply_markup=support_keyboard())
         return
 
     if data == "ask_support":
         bot.answer_callback_query(call.id, "✏️ Напишите ваш вопрос в этот чат")
         bot.register_next_step_handler(call.message, lambda m: forward_to_admin(uid, m.text))
-        bot.send_message(uid, "✅ Отправьте ваш вопрос одним сообщением.")
+        bot.send_message(uid, "✅ Отправьте ваш вопрос.")
         return
 
-    # ========== ОТВЕТ АДМИНА ПОЛЬЗОВАТЕЛЮ ==========
+    # Ответ админа
     if data.startswith("reply_to_"):
         if uid != ADMIN_ID:
             bot.answer_callback_query(call.id, "❌ Нет доступа")
             return
         user_id = int(data.split("_")[2])
-        bot.send_message(ADMIN_ID, f"✏️ Введите ответ для {user_name.get(user_id, user_id)} (ID: {user_id}):")
+        bot.send_message(ADMIN_ID, f"✏️ Введите ответ для пользователя {user_id}:")
         bot.register_next_step_handler(call.message, lambda m: send_answer_to_user(m, user_id))
         bot.answer_callback_query(call.id)
         return
 
-    # ========== РЕГИСТРАЦИЯ ==========
+    # Регистрация
     if uid != ADMIN_ID and data.startswith("bank_"):
         if data == "bank_sber":
             user_bank[uid] = "Сбербанк"
@@ -340,7 +358,7 @@ def handle(call):
         bot.answer_callback_query(call.id, f"✅ Выбран {user_bank[uid]}")
         return
 
-    # ========== НАВИГАЦИЯ ==========
+    # Навигация
     if data == "back_to_start":
         if uid == ADMIN_ID:
             bot.edit_message_text("🌟 ГЛАВНОЕ МЕНЮ АДМИНА", call.message.chat.id, call.message.message_id, reply_markup=start_keyboard(uid))
@@ -348,7 +366,7 @@ def handle(call):
             bot.edit_message_text("🌟 ГЛАВНОЕ МЕНЮ", call.message.chat.id, call.message.message_id, reply_markup=start_keyboard(uid))
         return
 
-    # ========== АДМИН ==========
+    # Админ
     if data == "stats" and uid == ADMIN_ID:
         bot.send_message(ADMIN_ID, f"💰 СТАТИСТИКА\n\n💵 Выручка: {total_revenue_usdt} USDT\n📦 Заказов: {total_orders}\n👥 Забанено: {len(BANNED_USERS)}\n👤 Пользователей: {len(user_name)}")
         bot.answer_callback_query(call.id)
@@ -359,7 +377,7 @@ def handle(call):
         bot.answer_callback_query(call.id)
         return
 
-    # ========== ПРОДУКТЫ ==========
+    # Продукты
     if data == "verification":
         bot.edit_message_text("✅ ВЕРИФИКАЦИЯ\n\n🔐 Выберите платформу:", call.message.chat.id, call.message.message_id, reply_markup=verification_platform_keyboard())
     elif data == "buy_card":
@@ -402,7 +420,7 @@ def handle(call):
     elif data == "platform_pocket":
         bot.edit_message_text("🎯 POCKET OPTION\n\nВыбери страну:", call.message.chat.id, call.message.message_id, reply_markup=pocket_keyboard())
 
-    # ========== ДОБАВЛЕНИЕ В КОРЗИНУ ==========
+    # Добавление в корзину
     elif data.startswith("add_bybit_"):
         code = data.split("_")[2]
         item = BYBIT_COUNTRIES[code]
@@ -460,7 +478,7 @@ def handle(call):
         items, total = get_cart_text(uid)
         bot.edit_message_text(f"🛒 КОРЗИНА\n\n{items}\n💰 Сумма: {total} USDT", call.message.chat.id, call.message.message_id, reply_markup=cart_keyboard())
 
-    # ========== ПРИНЯТЬ / ОТКЛОНИТЬ ==========
+    # Принять / отклонить
     elif data.startswith("accept_"):
         parts = data.split("_")
         user_id = int(parts[1])
@@ -491,15 +509,7 @@ def handle(call):
             pass
         bot.answer_callback_query(call.id, "❌ Платёж отклонён")
 
-def send_answer_to_user(m, user_id):
-    if m.chat.id != ADMIN_ID:
-        return
-    try:
-        bot.send_message(user_id, f"📩 ОТВЕТ ОПЕРАТОРА:\n\n{m.text}")
-        bot.send_message(ADMIN_ID, f"✅ Ответ отправлен {user_name.get(user_id, user_id)}")
-    except Exception as e:
-        bot.send_message(ADMIN_ID, f"❌ Ошибка при отправке ответа: {e}")
-
+# ========== СКРИНШОТЫ ==========
 @bot.message_handler(content_types=['photo'])
 def handle_photo(m):
     uid = m.chat.id
@@ -520,6 +530,7 @@ def handle_photo(m):
     bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=caption, reply_markup=admin_accept_keyboard(uid, amount))
     bot.send_message(uid, "✅ Скриншот отправлен! Администратор проверит оплату.")
 
+# ========== УДАЛЕНИЕ ИЗ КОРЗИНЫ ==========
 @bot.message_handler(func=lambda m: m.text and m.text.startswith('/del_'))
 def delete_item(m):
     uid = m.chat.id
@@ -537,50 +548,16 @@ def delete_item(m):
     except:
         pass
 
+# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     print("=" * 70)
     print("🔥 БОТ PRO VERIFY BYBIT ЗАПУЩЕН!")
     print("=" * 70)
-    print("✅ ПРИНЯТЬ → деньги + бан (клиент НЕ получает уведомление)")
-    print("✅ ОТКЛОНИТЬ → уведомление клиенту, деньги не добавляются")
-    print("✅ ОЧИСТИТЬ СТАТИСТИКУ — только для админа")
-    print("✅ ПОДДЕРЖКА → сообщения приходят админу")
-    print("✅ ОТЗЫВЫ → https://t.me/+NwnK-JR0iEU0NzQ5-")
+    print("✅ POLLING + HEALTH‑СЕРВЕР (Render)")
     print("=" * 70)
-
-from flask import Flask
-from threading import Thread
-import os
-
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-@flask_app.route('/health')
-def health():
-    return "OK", 200
-
-def run_webserver():
-    flask_app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
-
-Thread(target=run_webserver, daemon=True).start()
-print("✅ Health‑сервер запущен")
-    
     while True:
         try:
             bot.polling(none_stop=True, interval=1, timeout=60)
-        from flask import Flask
-import threading
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-@flask_app.route('/health')
-def health():
-    return "OK", 200
-
-def run_flask():
-    flask_app.run(host='0.0.0.0', port=10000)
-
-threading.Thread(target=run_flask, daemon=True).start()
         except Exception as e:
             print(f"❌ Ошибка: {e}")
             time.sleep(15)
