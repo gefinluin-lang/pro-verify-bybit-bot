@@ -547,6 +547,23 @@ if __name__ == "__main__":
     print("✅ ПОДДЕРЖКА → сообщения приходят админу")
     print("✅ ОТЗЫВЫ → https://t.me/+NwnK-JR0iEU0NzQ5-")
     print("=" * 70)
+
+from flask import Flask
+from threading import Thread
+import os
+
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+@flask_app.route('/health')
+def health():
+    return "OK", 200
+
+def run_webserver():
+    flask_app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
+
+Thread(target=run_webserver, daemon=True).start()
+print("✅ Health‑сервер запущен")
     
     while True:
         try:
